@@ -273,11 +273,12 @@ export function OptionsMonitorPanel({
 
   useEffect(() => {
     fetchRealOptions()
+    // Poll every 2.5 seconds
     const interval = setInterval(() => {
       if (isOpen) {
         fetchRealOptions()
       }
-    }, 5000)
+    }, 2500)
     return () => clearInterval(interval)
   }, [fetchRealOptions, isOpen])
 

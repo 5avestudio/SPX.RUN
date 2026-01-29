@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 export const DEFAULT_WATCHLIST = ["SPY", "QQQ", "AAPL", "TSLA", "GOOGL", "NVDA"]
 
 // Polling interval in ms
-const POLLING_INTERVAL = 3000
+const POLLING_INTERVAL = 2000
 
 // Symbol sanitization
 export function sanitizeSymbol(input: string): string {
