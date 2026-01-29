@@ -62,7 +62,7 @@ export async function GET(request: Request) {
   // Parse URL safely
   let symbolParam: string | null = null
   let expiration: string | null = null
-  
+
   try {
     const url = new URL(request.url)
     symbolParam = url.searchParams.get("symbol")
@@ -111,6 +111,7 @@ export async function GET(request: Request) {
           Authorization: `Bearer ${config.token}`,
           Accept: "application/json",
         },
+        cache: "no-store",
         signal: controller.signal,
       })
     } catch (fetchError) {
@@ -118,10 +119,10 @@ export async function GET(request: Request) {
       const errMsg = fetchError instanceof Error ? fetchError.message : String(fetchError)
       console.error("[v0] Tradier Chains - Network error:", errMsg)
       return NextResponse.json(
-        { 
-          error: "Network error connecting to Tradier API", 
+        {
+          error: "Network error connecting to Tradier API",
           details: errMsg,
-          symbol, 
+          symbol,
           expiration,
           hint: "Check if TRADIER_API_KEY is valid and the API is accessible"
         },

@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server"
 import { getMarketStatus } from "@/lib/market-calendar"
 import { generateRealisticCandles } from "@/lib/simulated-data"
-import { 
-  getQuote as getPublicQuote, 
+import {
+  getQuote as getPublicQuote,
   getCandles as getPublicCandles,
   validatePublicApiConfig,
-  mapSymbolForPublic 
+  mapSymbolForPublic
 } from "@/lib/public-api"
 
 // Aggregate candles for larger timeframes
@@ -54,20 +54,20 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const endpoint = searchParams.get("endpoint") || "quote"
   const symbol = searchParams.get("symbol") || "SPX"
-  
+
   // Check which APIs are available
   const publicApiConfig = validatePublicApiConfig()
   const hasPublicApi = publicApiConfig.valid
   const finnhubApiKey = process.env.FINNHUB_API_KEY
-  
+
   const marketStatus = getMarketStatus()
   const basePrice = TICKER_BASE_PRICES[symbol] || 100
-  
+
   // Validate and clean the Finnhub API key (prevent malformed keys)
   const cleanFinnhubKey = finnhubApiKey?.trim() || ""
   const isValidFinnhubKey = cleanFinnhubKey.length > 10 && /^[a-zA-Z0-9]+$/.test(cleanFinnhubKey)
 
-  console.log("[v0] Market data request:", { 
+  console.log("[v0] Market data request:", {
     endpoint,
     symbol,
     hasPublicApi,
@@ -78,15 +78,15 @@ export async function GET(request: Request) {
   try {
     // ========== QUOTE ENDPOINT ==========
     if (endpoint === "quote") {
-      
+
       // Try Public.com API FIRST (primary source)
       if (hasPublicApi) {
         try {
           const mappedSymbol = mapSymbolForPublic(symbol)
           console.log("[v0] Trying Public.com API for quote:", mappedSymbol)
-          
+
           const quote = await getPublicQuote(mappedSymbol)
-          
+
           if (quote && quote.price > 0) {
             console.log("[v0] Public.com quote:", { symbol: mappedSymbol, price: quote.price, change: quote.change })
             return NextResponse.json({
@@ -114,13 +114,14 @@ export async function GET(request: Request) {
         try {
           // Finnhub uses different symbols - map common ones
           const finnhubSymbol = symbol === "SPX" ? "^GSPC" : symbol
-          
+
           const finnhubUrl = new URL("https://finnhub.io/api/v1/quote")
           finnhubUrl.searchParams.set("symbol", finnhubSymbol)
           finnhubUrl.searchParams.set("token", cleanFinnhubKey)
-          
-          const response = await fetch(finnhubUrl.toString(), { 
-            next: { revalidate: 0 } 
+
+          const response = await fetch(finnhubUrl.toString(), {
+            cache: "no-store",
+            next: { revalidate: 0 }
           })
 
           if (response.ok) {
@@ -153,7 +154,8 @@ export async function GET(request: Request) {
         const yahooSymbol = symbol === "SPX" ? "^GSPC" : symbol
         const response = await fetch(
           `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=1m&range=1d`,
-          { 
+          {
+            cache: "no-store",
             next: { revalidate: 0 },
             headers: {
               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
@@ -165,13 +167,13 @@ export async function GET(request: Request) {
           const data = await response.json()
           const result = data.chart?.result?.[0]
           const meta = result?.meta
-          
+
           if (meta?.regularMarketPrice) {
             const price = meta.regularMarketPrice
             const prevClose = meta.previousClose || meta.chartPreviousClose || price
             const change = price - prevClose
             const changePercent = (change / prevClose) * 100
-            
+
             console.log("[v0] Yahoo quote:", { symbol: yahooSymbol, price, afterHours: !marketStatus.isOpen })
             return NextResponse.json({
               c: price,
@@ -213,28 +215,28 @@ export async function GET(request: Request) {
     if (endpoint === "candles") {
       const resolution = searchParams.get("resolution") || "5"
       const isIntraday = !["D", "W", "M"].includes(resolution)
-      
+
       // Try Public.com API FIRST for candles
       if (hasPublicApi) {
         try {
           const mappedSymbol = mapSymbolForPublic(symbol)
           console.log("[v0] Trying Public.com API for candles:", mappedSymbol, resolution)
-          
+
           const candles = await getPublicCandles(mappedSymbol, resolution)
-          
+
           if (candles && candles.length > 0) {
             console.log("[v0] Public.com candles:", candles.length, "for", mappedSymbol)
-            
+
             // Aggregate if needed for larger timeframes
             let processedCandles = candles
             if (resolution === "30" || resolution === "60") {
               const factor = resolution === "30" ? 2 : 4
               processedCandles = aggregateCandles(candles, factor)
             }
-            
-            return NextResponse.json({ 
-              candles: processedCandles, 
-              source: "public", 
+
+            return NextResponse.json({
+              candles: processedCandles,
+              source: "public",
               resolution,
               originalSymbol: symbol,
               mappedSymbol,
@@ -260,8 +262,9 @@ export async function GET(request: Request) {
           finnhubCandleUrl.searchParams.set("to", to.toString())
           finnhubCandleUrl.searchParams.set("token", cleanFinnhubKey)
 
-          const response = await fetch(finnhubCandleUrl.toString(), { 
-            next: { revalidate: 0 } 
+          const response = await fetch(finnhubCandleUrl.toString(), {
+            cache: "no-store",
+            next: { revalidate: 0 }
           })
 
           if (response.ok) {
@@ -313,7 +316,8 @@ export async function GET(request: Request) {
 
         const response = await fetch(
           `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=${yahooInterval}&range=${yahooRange}&includePrePost=true`,
-          { 
+          {
+            cache: "no-store",
             next: { revalidate: 0 },
             headers: {
               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'

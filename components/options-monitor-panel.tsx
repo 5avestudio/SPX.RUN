@@ -40,7 +40,7 @@ export function OptionsMonitorPanel({
   volume = 3310000,
   priceChange = 0,
   isOpen = false,
-  onToggle = () => {},
+  onToggle = () => { },
   className,
 }: OptionsMonitorPanelProps) {
   const [realOptions, setRealOptions] = useState<TradierOption[]>([])
@@ -48,7 +48,8 @@ export function OptionsMonitorPanel({
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
   const [usingRealData, setUsingRealData] = useState(false)
   const [dataSource, setDataSource] = useState<string>("none")
-  
+  const [sourceSymbol, setSourceSymbol] = useState<string>("SPX")
+
   // Panel width - matches Image 1 reference (narrower panel)
   const PANEL_WIDTH = "w-[180px]"
 
@@ -65,11 +66,11 @@ export function OptionsMonitorPanel({
 
     try {
       setLoading(true)
-      
+
       // Create AbortController for timeout and request cancellation
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 8000)
-      
+
       // Step 1: Get available roots for SPX (may have SPXW for 0DTE)
       let rootSymbol = "SPXW" // Default to SPXW for 0DTE
       try {
@@ -92,7 +93,7 @@ export function OptionsMonitorPanel({
         signal: controller.signal,
         cache: "no-store",
       }).catch(() => null)
-      
+
       if (!expRes || !expRes.ok) {
         clearTimeout(timeoutId)
         setUsingRealData(false)
@@ -120,7 +121,7 @@ export function OptionsMonitorPanel({
         }
         return null
       })
-      
+
       clearTimeout(timeoutId)
 
       // If Tradier fails, try Public API as fallback
@@ -145,7 +146,7 @@ export function OptionsMonitorPanel({
 
               if (publicChainRes?.ok) {
                 const publicChainData = await publicChainRes.json()
-                
+
                 if (publicChainData.chain && publicChainData.chain.length > 0) {
                   const options: TradierOption[] = []
                   for (const exp of publicChainData.chain) {
@@ -182,13 +183,14 @@ export function OptionsMonitorPanel({
                       }
                     }
                   }
-                  
+
                   if (options.length > 0) {
                     setRealOptions(options)
                     setUsingRealData(true)
                     setDataSource("public")
+                    setSourceSymbol("SPY")
                     setLastUpdate(new Date())
-                    console.log("[Options Monitor] Using Public API data:", options.length, "options")
+                    console.log("[Options Monitor] Using Public API data (SPY proxy):", options.length, "options")
                     return
                   }
                 }
@@ -198,7 +200,7 @@ export function OptionsMonitorPanel({
         } catch (publicErr) {
           console.log("[Options Monitor] Public API fallback also failed:", publicErr)
         }
-        
+
         // Both APIs failed, use simulated
         setUsingRealData(false)
         setDataSource("simulated")
@@ -206,7 +208,7 @@ export function OptionsMonitorPanel({
       }
 
       const chainData = await chainRes.json()
-      
+
       if (chainData.chain && chainData.chain.length > 0) {
         // Flatten calls and puts from chain data, use mark-first displayPrice
         const options: TradierOption[] = []
@@ -244,16 +246,17 @@ export function OptionsMonitorPanel({
             }
           }
         }
-        
+
         if (options.length > 0) {
           setRealOptions(options)
           setUsingRealData(true)
           setDataSource("tradier")
+          setSourceSymbol(rootSymbol)
           setLastUpdate(new Date())
           return
         }
       }
-      
+
       // Fallback to simulated if no valid data
       setUsingRealData(false)
       setDataSource("simulated")
@@ -288,15 +291,29 @@ export function OptionsMonitorPanel({
       const isPutITM = strike > currentPrice
       const isATM = i === 0
 
-      const realCall = realOptions.find((o) => o.type === "call" && o.strike === strike)
-      const realPut = realOptions.find((o) => o.type === "put" && o.strike === strike)
+      // Match strikes, accounting for SPX (6000) vs SPY (600) scaling if needed
+      const realCall = realOptions.find((o) => {
+        if (o.type !== "call") return false
+        if (o.strike === strike) return true
+        // Handle 10:1 scaling for SPX -> SPY proxy
+        if (dataSource === "public" && Math.abs(o.strike * 10 - strike) < 2) return true
+        return false
+      })
+
+      const realPut = realOptions.find((o) => {
+        if (o.type !== "put") return false
+        if (o.strike === strike) return true
+        // Handle 10:1 scaling for SPX -> SPY proxy
+        if (dataSource === "public" && Math.abs(o.strike * 10 - strike) < 2) return true
+        return false
+      })
 
       let callData: { bid: number; ask: number; last: number }
       let putData: { bid: number; ask: number; last: number }
 
       if (realCall && (realCall.bid > 0 || realCall.ask > 0)) {
         // Use mark-first displayPrice for stable pricing (prevents flipping)
-        const stablePrice = realCall.displayPrice ?? realCall.mark ?? realCall.last ?? 
+        const stablePrice = realCall.displayPrice ?? realCall.mark ?? realCall.last ??
           (realCall.bid > 0 && realCall.ask > 0 ? (realCall.bid + realCall.ask) / 2 : realCall.last)
         callData = {
           bid: realCall.bid,
@@ -340,7 +357,7 @@ export function OptionsMonitorPanel({
 
       if (realPut && (realPut.bid > 0 || realPut.ask > 0)) {
         // Use mark-first displayPrice for stable pricing (prevents flipping)
-        const stablePrice = realPut.displayPrice ?? realPut.mark ?? realPut.last ?? 
+        const stablePrice = realPut.displayPrice ?? realPut.mark ?? realPut.last ??
           (realPut.bid > 0 && realPut.ask > 0 ? (realPut.bid + realPut.ask) / 2 : realPut.last)
         putData = {
           bid: realPut.bid,
@@ -445,12 +462,28 @@ export function OptionsMonitorPanel({
           PANEL_WIDTH, "h-full pt-[115px] pb-[70px] px-1 overflow-y-auto rounded-r-2xl",
         )}
       >
-        <div className="flex items-center justify-between mb-1 px-1">
-          <span className="text-[10px] font-medium tracking-widest text-white/40 uppercase">OPTIONS CHAIN</span>
-          <div className="flex items-center gap-1 text-[7px]">
-            <span className="text-white/80">{formatVolume(volume)}</span>
-            <span className="text-emerald-400">{impliedVolatility.toFixed(1)}%</span>
-            {loading && <RefreshCw className="w-2.5 h-2.5 text-white/30 animate-spin" />}
+        <div className="flex flex-col mb-2 px-1 gap-0.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-medium tracking-widest text-white/40 uppercase">OPTIONS CHAIN</span>
+            <div className="flex items-center gap-1.5">
+              {loading && <RefreshCw className="w-2.5 h-2.5 text-white/30 animate-spin" />}
+              <span className={cn(
+                "text-[7px] px-1 py-0.5 rounded-sm font-bold uppercase",
+                dataSource === "tradier" ? "bg-emerald-500/20 text-emerald-400" :
+                  dataSource === "public" ? "bg-blue-500/20 text-blue-400" :
+                    "bg-amber-500/20 text-amber-400"
+              )}>
+                {dataSource === "none" ? "OFFLINE" : dataSource}
+                {sourceSymbol && dataSource !== "simulated" && ` (${sourceSymbol})`}
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center justify-between text-[7px] text-white/30">
+            <div className="flex items-center gap-1">
+              <span>VOL: {formatVolume(volume)}</span>
+              <span className="text-emerald-400/60">IV: {impliedVolatility.toFixed(1)}%</span>
+            </div>
+            <span>{lastUpdate ? lastUpdate.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--:--:--'}</span>
           </div>
         </div>
 

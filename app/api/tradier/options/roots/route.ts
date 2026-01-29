@@ -61,6 +61,7 @@ export async function GET(request: Request) {
           Authorization: `Bearer ${config.token}`,
           Accept: "application/json",
         },
+        cache: "no-store",
         signal: controller.signal,
       })
     } catch (fetchError) {

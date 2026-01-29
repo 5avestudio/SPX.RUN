@@ -61,6 +61,7 @@ export async function GET(request: Request) {
           Authorization: `Bearer ${config.token}`,
           Accept: "application/json",
         },
+        cache: "no-store",
         signal: controller.signal,
       })
     } catch (fetchError) {
@@ -68,8 +69,8 @@ export async function GET(request: Request) {
       const errMsg = fetchError instanceof Error ? fetchError.message : String(fetchError)
       console.error("[v0] Tradier Expirations - Network error:", errMsg)
       return NextResponse.json(
-        { 
-          error: "Network error connecting to Tradier API", 
+        {
+          error: "Network error connecting to Tradier API",
           details: errMsg,
           symbol,
           hint: "Check if TRADIER_API_KEY is valid and the API is accessible"
@@ -106,7 +107,7 @@ export async function GET(request: Request) {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
     const errorName = error instanceof Error ? error.name : "Unknown"
-    
+
     console.error("[v0] Tradier Expirations - Error:", {
       name: errorName,
       message: errorMessage,
@@ -122,8 +123,8 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.json(
-      { 
-        error: "Failed to fetch expirations", 
+      {
+        error: "Failed to fetch expirations",
         details: errorMessage,
         errorType: errorName,
       },
